@@ -1,0 +1,46 @@
+name: CI
+
+# Reproducibilidad como propiedad del repo: cada push/PR reconstruye el lab
+# desde cero y ejecuta las fases completas (POC + aportaciones + controles).
+# Requisitos del runner: Docker y docker compose (ubuntu-latest los trae).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sintaxis (sh + python)
+        run: |
+          sh -n exploit/*.sh scripts/*.sh docker/wordpress/entrypoint.sh
+          python3 -m py_compile cli/poc.py exploit/02_craft_link.py \
+            research/investigacion/fuzz_subcadena.py scripts/detectar_iocs.py
+
+      - name: Laboratorio y POC completo (fases 1-7 + controles)
+        run: make full-demo
+
+      - name: Mitigación paliativa (A/B/C)
+        run: make mitigacion-demo
+
+      - name: Fuzzer de subcadenas (8/8 esperado)
+        run: |
+          python3 research/investigacion/fuzz_subcadena.py > fuzz-out.md
+          cat fuzz-out.md
+          grep -q "8/8 casos" fuzz-out.md
+
+      - name: Detector de IOCs sobre el log de ejemplo
+        run: make detectar-iocs
+
+      - name: Limpieza
+        if: always()
+        run: make clean

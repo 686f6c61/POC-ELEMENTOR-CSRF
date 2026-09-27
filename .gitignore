@@ -1,0 +1,40 @@
+# ---- no subir: artefactos locales y herramientas del anfitrión ----
+
+# Zips de plugins descargados (se bajan bajo demanda, ~23 MB cada uno)
+research/downloads/
+*.zip
+
+# Sesiones y artefactos de las fases del exploit
+exploit/*.cookies.txt
+exploit/*.jar
+exploit/correo-*.html
+exploit/enlace-malicioso.txt
+cookies.txt
+*.session
+
+# Herramientas/agentes que dejan directorios en el proyecto
+.mimosa/
+.v2c/
+.video_agent/
+recordings/
+
+# Editores y SO
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+
+# Node (si algún día entra algo de node)
+node_modules/
+
+# Secretos / entorno
+.env
+.env.*
+
+# Salidas efímeras de CI/consola
+fuzz-out.md
+.tmp/

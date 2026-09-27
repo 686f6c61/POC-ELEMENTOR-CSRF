@@ -1,0 +1,148 @@
+# Laboratorio: CSRF en Elementor 4.3.0/4.3.1 (bypass del nonce REST vía Editor Events)
+#
+#   victima :8085  -> WordPress + Elementor 4.3.1 (VULNERABLE)
+#   control :8086  -> WordPress + Elementor 4.3.2 (PARCHADO, profile "control")
+#
+# (8080/8081/8090 están tomados en la máquina anfitriona por otros proyectos:
+#  este lab usa 8085/8086/8095.)
+#
+# Misma imagen base WP para ambos: la única variable del experimento es la
+# versión de Elementor. Ver https://blog.elhacker.net/2026/09/vulnerabilidad-en-elementor-para.html
+
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  victima:
+    build:
+      context: docker/wordpress
+      args:
+        ELEMENTOR_VERSION: "4.3.1"
+    ports:
+      - "8085:80"
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      LAB_URL: "http://localhost:8085"
+      LAB_TITLE: "Elementor CSRF Lab (victima 4.3.1)"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - victima_html:/var/www/html
+
+  # ---- control negativo: mismo ataque contra Elementor 4.3.2 ----
+  db-control:
+    profiles: ["control"]
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - db_control_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  control:
+    profiles: ["control"]
+    build:
+      context: docker/wordpress
+      args:
+        ELEMENTOR_VERSION: "4.3.2"
+    ports:
+      - "8086:80"
+    environment:
+      WORDPRESS_DB_HOST: db-control:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      LAB_URL: "http://localhost:8086"
+      LAB_TITLE: "Elementor CSRF Lab (control 4.3.2)"
+    depends_on:
+      db-control:
+        condition: service_healthy
+    volumes:
+      - control_html:/var/www/html
+
+  # ---- CTF: instancia de reto (profile "ctf") + bot víctima ----
+  db-ctf:
+    profiles: ["ctf"]
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - db_ctf_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  ctf:
+    profiles: ["ctf"]
+    build:
+      context: docker/wordpress
+      args:
+        ELEMENTOR_VERSION: "4.3.1"
+    ports:
+      - "8087:80"
+    environment:
+      WORDPRESS_DB_HOST: db-ctf:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      LAB_URL: "http://localhost:8087"
+      LAB_TITLE: "CTF — La Subcadena Mágica (Elementor 4.3.1)"
+      CTF_MODE: "1"
+      CTF_ADMIN_PASS: "demo-super-secreta-2026"
+      CTF_BOT_URL: "http://localhost:8089"
+    depends_on:
+      db-ctf:
+        condition: service_healthy
+    volumes:
+      - ctf_html:/var/www/html
+      # mu-plugin de hardening para el reto (lo activa el entrypoint en CTF_MODE)
+      - ./research/investigacion/lab-hardening-rest.php:/usr/src/lab-hardening-rest.php:ro
+
+  ctf-bot:
+    profiles: ["ctf"]
+    build: ctf/bot
+    ports:
+      - "8089:8080"
+    environment:
+      WP_BASE: "http://ctf"          # vista interna del sitio del reto
+      HOSTS_PUBLICOS: "localhost:8087,127.0.0.1:8087,ctf:8080"
+      VICTIMA_USER: "editor-demo"
+      VICTIMA_PASS: "demo-super-secreta-2026"
+    depends_on:
+      - ctf
+
+volumes:
+  db_data:
+  db_control_data:
+  victima_html:
+  control_html:
+  db_ctf_data:
+  ctf_html:
